@@ -528,11 +528,20 @@ for i in {0,1,2}; do
   eval DISK${i}_REF=${STORAGE}:${DISK_REF:-}${!disk}
 done
 
-msg_info "Creating a RaspiBlitz VM"
+msg_info "Creating the RaspiBlitz VM shell"
 qm create $VMID -agent 1${MACHINE} -tablet 0 -localtime 1 -bios ovmf${CPU_TYPE} -cores $CORE_COUNT -memory $RAM_SIZE \
   -name $HN -tags community-script -net0 virtio,bridge=$BRG,macaddr=$MAC$VLAN$MTU -onboot 1 -ostype l26 -scsihw virtio-scsi-pci >/dev/null
 pvesm alloc $STORAGE $VMID $DISK0 4M >/dev/null
-qm importdisk $VMID ${FILE_IMG} $STORAGE ${DISK_IMPORT:-} >/dev/null
+msg_ok "Created the RaspiBlitz VM shell ${CL}${BL}(ID ${VMID})${CL}"
+
+# Importing the ~26 GiB raw image into the storage pool is the slow part (minutes
+# on Ceph/NFS). Don't suppress its output — qm importdisk prints live "transferred
+# X% of N GiB" progress so the user can see it working instead of a frozen spinner.
+echo -e "${TAB}${YW}Importing the OS image into ${BL}${STORAGE}${YW} — this can take several minutes (Ceph/NFS are slower)...${CL}\n"
+qm importdisk $VMID ${FILE_IMG} $STORAGE ${DISK_IMPORT:-}
+msg_ok "Imported the OS image into ${CL}${BL}${STORAGE}${CL}"
+
+msg_info "Attaching disks and finalizing configuration"
 qm set $VMID \
   -efidisk0 ${DISK0_REF}${FORMAT} \
   -scsi0 ${DISK1_REF},${DISK_CACHE}${THIN}size=${DISK_SIZE} \
@@ -542,6 +551,7 @@ qm set $VMID \
 DATA_DISK_GB="${DATA_DISK_SIZE%G}"
 qm set $VMID -scsi1 ${STORAGE}:${DATA_DISK_GB},${DISK_CACHE}${THIN}backup=0 >/dev/null
 qm set $VMID --agent enabled=1 >/dev/null
+msg_ok "Attached disks ${CL}${BL}(OS ${DISK_SIZE}, data ${DATA_DISK_SIZE} → /mnt/hdd)${CL}"
 
 DESCRIPTION=$(
   cat <<EOF
