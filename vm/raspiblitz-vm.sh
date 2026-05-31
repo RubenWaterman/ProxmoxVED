@@ -120,6 +120,26 @@ function msg_error() {
   echo -e "${BFR}${CROSS}${RD}${msg}${CL}"
 }
 
+function check_storage_space() {
+  # Verify the unpack/working filesystem has room for the compressed download,
+  # the decompressed raw image and a safety buffer BEFORE pulling ~4 GB.
+  local required_gb="$1"
+  local target="${2:-${TEMP_DIR:-/tmp}}"
+  msg_info "Checking for at least ${required_gb} GB free where the image unpacks"
+  local avail_gb mount
+  avail_gb=$(df -Pk "$target" 2>/dev/null | awk 'NR==2 {printf "%d", $4 / 1024 / 1024}')
+  mount=$(df -Pk "$target" 2>/dev/null | awk 'NR==2 {print $6}')
+  if [ -z "$avail_gb" ]; then
+    msg_error "Could not determine free space for ${target}."
+    exit 1
+  fi
+  if [ "$avail_gb" -lt "$required_gb" ]; then
+    msg_error "Not enough free space on ${mount}: need ~${required_gb} GB, only ${avail_gb} GB free. Free up space (or set TMPDIR to a larger filesystem) and re-run."
+    exit 1
+  fi
+  msg_ok "Free space OK on ${mount}: ${avail_gb} GB available"
+}
+
 function check_root() {
   if [[ "$(id -u)" -ne 0 || $(ps -o comm= -p $PPID) == "sudo" ]]; then
     clear
@@ -431,6 +451,11 @@ else
 fi
 msg_ok "Using ${CL}${BL}$STORAGE${CL} ${GN}for Storage Location."
 msg_ok "Virtual Machine ID is ${CL}${BL}$VMID${CL}."
+
+# Preflight: OS disk size + 5 GB buffer (covers the ~4 GB compressed download),
+# checked on the filesystem where the image is downloaded and decompressed.
+check_storage_space "$(( ${DISK_SIZE%G} + 5 ))"
+
 msg_info "Retrieving the URL for $APP"
 URL="https://raspiblitz.bittr.io/raspiblitz-amd64-debian-lean-2026-03-29-d52be1a.img.gz"
 # SHA-256 of the compressed image (.img.gz). Hardcoded so every download is
