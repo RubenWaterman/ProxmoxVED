@@ -97,7 +97,10 @@ function cleanup() {
   rm -rf $TEMP_DIR
 }
 
-TEMP_DIR=$(mktemp -d)
+# Decompressing the ~26 GiB raw image needs real disk space, so default the
+# working dir to /var/tmp (root filesystem) instead of /tmp, which is a small
+# RAM-backed tmpfs on many Proxmox hosts. Override with TMPDIR if desired.
+TEMP_DIR=$(mktemp -d -p "${TMPDIR:-/var/tmp}")
 pushd $TEMP_DIR >/dev/null
 if whiptail --backtitle "Proxmox VE Helper Scripts" --title "RaspiBlitz VM" --yesno "This will create a New RaspiBlitz VM. Proceed?" 10 58; then
   :
@@ -124,7 +127,7 @@ function check_storage_space() {
   # Verify the unpack/working filesystem has room for the compressed download,
   # the decompressed raw image and a safety buffer BEFORE pulling ~4 GB.
   local required_gb="$1"
-  local target="${2:-${TEMP_DIR:-/tmp}}"
+  local target="${2:-${TEMP_DIR:-/var/tmp}}"
   msg_info "Checking for at least ${required_gb} GB free where the image unpacks"
   local avail_gb mount
   avail_gb=$(df -Pk "$target" 2>/dev/null | awk 'NR==2 {printf "%d", $4 / 1024 / 1024}')
