@@ -563,6 +563,12 @@ DESCRIPTION=$(
   <h2 style='font-size: 24px; margin: 20px 0;'>RaspiBlitz VM</h2>
 
   <p style='margin: 16px 0;'>
+    Set up via <b>SSH</b> (<code>ssh admin@&lt;VM-IP&gt;</code>, default password <code>raspiblitz</code>)
+    or the <b>Web UI</b> (<code>http://&lt;VM-IP&gt;</code>). The Proxmox console shows RaspiBlitz's
+    LCD interface, which does not work in a VM — this is expected.
+  </p>
+
+  <p style='margin: 16px 0;'>
     <a href='https://ko-fi.com/community_scripts' target='_blank' rel='noopener noreferrer'>
       <img src='https://img.shields.io/badge/&#x2615;-Buy us a coffee-blue' alt='spend Coffee' />
     </a>
@@ -601,3 +607,10 @@ if [ "$START_VM" == "yes" ]; then
 fi
 post_update_to_api "done" "none"
 msg_ok "Completed successfully!\n"
+
+echo -e "${INFO}${YW} Set up RaspiBlitz over SSH or the Web UI — NOT the Proxmox console.${CL}"
+echo -e "${TAB}The noVNC/Proxmox console runs RaspiBlitz's LCD interface, which does not work"
+echo -e "${TAB}in a VM (harmless '/dev/fb0 Oops: Quit' errors). Once the VM has an IP, use:"
+echo -e "${TAB}${GATEWAY}${BGN}SSH:${CL}    ssh admin@<VM-IP>   ${YW}(default password: raspiblitz)${CL}"
+echo -e "${TAB}${GATEWAY}${BGN}Web UI:${CL} http://<VM-IP>"
+echo -e "${TAB}${YW}Find the IP in your router, or in Proxmox → VM ${VMID} → Summary (guest agent).${CL}"
