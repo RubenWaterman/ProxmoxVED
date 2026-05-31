@@ -563,9 +563,9 @@ DESCRIPTION=$(
   <h2 style='font-size: 24px; margin: 20px 0;'>RaspiBlitz VM</h2>
 
   <p style='margin: 16px 0;'>
-    Set up via <b>SSH</b> (<code>ssh admin@&lt;VM-IP&gt;</code>, default password <code>raspiblitz</code>)
-    or the <b>Web UI</b> (<code>http://&lt;VM-IP&gt;</code>). The Proxmox console shows RaspiBlitz's
-    LCD interface, which does not work in a VM — this is expected.
+    Set up via <b>SSH</b> (<code>ssh admin@&lt;VM-IP&gt;</code>, default password <code>raspiblitz</code>).
+    This image is built without the Web UI/API, so SSH is the only interface. The Proxmox
+    console shows RaspiBlitz's LCD interface, which does not work in a VM — this is expected.
   </p>
 
   <p style='margin: 16px 0;'>
@@ -608,9 +608,9 @@ fi
 post_update_to_api "done" "none"
 msg_ok "Completed successfully!\n"
 
-echo -e "${INFO}${YW} Set up RaspiBlitz over SSH or the Web UI — NOT the Proxmox console.${CL}"
+echo -e "${INFO}${YW} Set up RaspiBlitz over SSH — NOT the Proxmox console.${CL}"
+echo -e "${TAB}This image is built without the Web UI/API, so SSH is the only interface."
 echo -e "${TAB}The noVNC/Proxmox console runs RaspiBlitz's LCD interface, which does not work"
-echo -e "${TAB}in a VM (harmless '/dev/fb0 Oops: Quit' errors). Once the VM has an IP, use:"
-echo -e "${TAB}${GATEWAY}${BGN}SSH:${CL}    ssh admin@<VM-IP>   ${YW}(default password: raspiblitz)${CL}"
-echo -e "${TAB}${GATEWAY}${BGN}Web UI:${CL} http://<VM-IP>"
+echo -e "${TAB}in a VM (harmless '/dev/fb0 Oops: Quit' errors). Once the VM has an IP:"
+echo -e "${TAB}${GATEWAY}${BGN}SSH:${CL} ssh admin@<VM-IP>   ${YW}(default password: raspiblitz)${CL}"
 echo -e "${TAB}${YW}Find the IP in your router, or in Proxmox → VM ${VMID} → Summary (guest agent).${CL}"
