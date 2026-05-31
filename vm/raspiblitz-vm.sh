@@ -466,26 +466,44 @@ URL="https://raspiblitz.bittr.io/raspiblitz-amd64-debian-lean-2026-03-29-d52be1a
 # corrupted in transit or tampered with on the mirror.
 IMG_GZ_SHA256="3167ddf4c383977526e779a2d4d7e7247438d776f08238468f0b51a5313f9cb9"
 FILE="$(basename "$URL")"
+# Cache the verified image so repeated runs don't re-download ~4 GB. The cache is
+# keyed on the versioned filename and re-verified by checksum on every reuse, so a
+# stale or corrupt cached file can never be used. Set CACHE_DIR="" to disable.
+CACHE_DIR="${RASPIBLITZ_CACHE_DIR:-/var/cache/raspiblitz-vm}"
+CACHE_FILE="${CACHE_DIR}/${FILE}"
 sleep 2
 msg_ok "${CL}${BL}${URL}${CL}"
-curl -f#SL -o "$FILE" "$URL"
-msg_ok "Downloaded ${CL}${BL}${FILE}${CL}"
 
-msg_info "Verifying SHA-256 checksum"
-if ! echo "${IMG_GZ_SHA256}  ${FILE}" | sha256sum -c - >/dev/null 2>&1; then
-  msg_error "Checksum verification FAILED for ${FILE} — the image is corrupt or has been tampered with. Aborting."
-  rm -f "$FILE"
-  exit 1
+if [ -n "$CACHE_DIR" ] && [ -f "$CACHE_FILE" ] && echo "${IMG_GZ_SHA256}  ${CACHE_FILE}" | sha256sum -c - >/dev/null 2>&1; then
+  # Verified cache hit — skip the download entirely.
+  GZ_SRC="$CACHE_FILE"
+  msg_ok "Using cached image ${CL}${BL}${CACHE_FILE}${CL}"
+else
+  curl -f#SL -o "$FILE" "$URL"
+  msg_ok "Downloaded ${CL}${BL}${FILE}${CL}"
+
+  msg_info "Verifying SHA-256 checksum"
+  if ! echo "${IMG_GZ_SHA256}  ${FILE}" | sha256sum -c - >/dev/null 2>&1; then
+    msg_error "Checksum verification FAILED for ${FILE} — the image is corrupt or has been tampered with. Aborting."
+    rm -f "$FILE"
+    exit 1
+  fi
+  msg_ok "Verified SHA-256 ${CL}${BL}${IMG_GZ_SHA256}${CL}"
+  GZ_SRC="$FILE"
+
+  # Best-effort: save the verified image to the cache for next time.
+  if [ -n "$CACHE_DIR" ] && mkdir -p "$CACHE_DIR" 2>/dev/null && cp -f "$FILE" "$CACHE_FILE" 2>/dev/null; then
+    msg_ok "Cached image to ${CL}${BL}${CACHE_FILE}${CL}"
+  fi
 fi
-msg_ok "Verified SHA-256 ${CL}${BL}${IMG_GZ_SHA256}${CL}"
 
 if ! command -v pv &>/dev/null; then
   apt-get update &>/dev/null && apt-get install -y pv &>/dev/null
 fi
 
-msg_info "Decompressing $FILE with progress${CL}\n"
+msg_info "Decompressing image with progress${CL}\n"
 FILE_IMG="${FILE%.gz}"
-pv "$FILE" -N "Extracting" | gzip -dc >"$FILE_IMG"
+pv "$GZ_SRC" -N "Extracting" | gzip -dc >"$FILE_IMG"
 msg_ok "Decompressed to ${CL}${BL}${FILE_IMG}${CL}"
 
 STORAGE_TYPE=$(pvesm status -storage $STORAGE | awk 'NR>1 {print $2}')
