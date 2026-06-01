@@ -197,7 +197,7 @@ function default_settings() {
   FORMAT=",efitype=4m"
   MACHINE=""
   DISK_CACHE=""
-  DISK_SIZE="32G"
+  DISK_SIZE="64G"
   DATA_DISK_SIZE="1024G"
   HN="raspiblitz"
   CPU_TYPE=""
@@ -455,9 +455,12 @@ fi
 msg_ok "Using ${CL}${BL}$STORAGE${CL} ${GN}for Storage Location."
 msg_ok "Virtual Machine ID is ${CL}${BL}$VMID${CL}."
 
-# Preflight: OS disk size + 5 GB buffer (covers the ~4 GB compressed download),
-# checked on the filesystem where the image is downloaded and decompressed.
-check_storage_space "$(( ${DISK_SIZE%G} + 5 ))"
+# Preflight on the filesystem where the image is downloaded and decompressed.
+# This is bounded by the IMAGE, not the VM disk size: the ~4 GB compressed
+# download + the ~27 GB decompressed raw image + libguestfs/virt-customize
+# scratch. It does NOT scale with DISK_SIZE (that space lives on the VM storage
+# pool, not here), so 40 GB is a safe fixed requirement.
+check_storage_space 40
 
 msg_info "Retrieving the URL for $APP"
 URL="https://raspiblitz.bittr.io/raspiblitz-amd64-debian-lean-2026-03-29-d52be1a.img.gz"
@@ -505,6 +508,38 @@ msg_info "Decompressing image with progress${CL}\n"
 FILE_IMG="${FILE%.gz}"
 pv "$GZ_SRC" -N "Extracting" | gzip -dc >"$FILE_IMG"
 msg_ok "Decompressed to ${CL}${BL}${FILE_IMG}${CL}"
+
+# The RaspiBlitz image has no growroot, so its LVM root stays ~23 GB no matter how
+# large the VM disk is. Inject a one-shot firstboot script (via libguestfs) that
+# grows partition 3 -> LVM PV -> root LV -> ext4 to fill the disk on first boot.
+# Best-effort: if libguestfs is unavailable or fails, the VM is still created and
+# the user can expand root manually later. Disable with RASPIBLITZ_AUTO_GROW=0.
+if [ "${RASPIBLITZ_AUTO_GROW:-1}" = "1" ]; then
+  msg_info "Injecting first-boot root-filesystem auto-grow"
+  if ! command -v virt-customize &>/dev/null; then
+    apt update &>/dev/null && apt install -y libguestfs-tools &>/dev/null
+  fi
+  if command -v virt-customize &>/dev/null; then
+    GROW_SCRIPT="${TEMP_DIR}/raspiblitz-growroot.sh"
+    cat <<'GROW' >"$GROW_SCRIPT"
+#!/bin/bash
+# Expand partition 3 -> LVM PV -> root LV -> ext4 to fill the disk (runs once).
+set -x
+growpart /dev/sda 3 || echo ', +' | sfdisk --no-reread -N 3 /dev/sda || true
+partprobe /dev/sda 2>/dev/null || partx -u /dev/sda 2>/dev/null || true
+pvresize /dev/sda3 || true
+lvextend -l +100%FREE /dev/raspiblitz-amd64-vg/root || true
+resize2fs /dev/raspiblitz-amd64-vg/root || true
+GROW
+    if LIBGUESTFS_BACKEND=direct virt-customize -a "$FILE_IMG" --firstboot "$GROW_SCRIPT" &>/dev/null; then
+      msg_ok "Injected first-boot root auto-grow (root will fill ${DISK_SIZE} on first boot)"
+    else
+      echo -e "${TAB}${YW}⚠ Could not inject auto-grow (libguestfs failed). VM will still be created; root stays at the image default ~23 GB — expand manually later.${CL}"
+    fi
+  else
+    echo -e "${TAB}${YW}⚠ libguestfs-tools unavailable — skipping root auto-grow; root stays ~23 GB.${CL}"
+  fi
+fi
 
 STORAGE_TYPE=$(pvesm status -storage $STORAGE | awk 'NR>1 {print $2}')
 case $STORAGE_TYPE in
