@@ -197,7 +197,7 @@ function default_settings() {
   FORMAT=",efitype=4m"
   MACHINE=""
   DISK_CACHE=""
-  DISK_SIZE="64G"
+  DISK_SIZE="32G"
   DATA_DISK_SIZE="1024G"
   HN="raspiblitz"
   CPU_TYPE=""
