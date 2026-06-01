@@ -523,13 +523,21 @@ if [ "${RASPIBLITZ_AUTO_GROW:-1}" = "1" ]; then
     GROW_SCRIPT="${TEMP_DIR}/raspiblitz-growroot.sh"
     cat <<'GROW' >"$GROW_SCRIPT"
 #!/bin/bash
-# Expand partition 3 -> LVM PV -> root LV -> ext4 to fill the disk (runs once).
+# Grow the root partition -> LVM PV -> root LV -> filesystem to fill its disk
+# (runs once). Detect everything dynamically: SCSI device naming (sda vs sdb) is
+# NOT stable across VMs because the data disk can claim sda, so never hardcode it.
 set -x
-growpart /dev/sda 3 || echo ', +' | sfdisk --no-reread -N 3 /dev/sda || true
-partprobe /dev/sda 2>/dev/null || partx -u /dev/sda 2>/dev/null || true
-pvresize /dev/sda3 || true
-lvextend -l +100%FREE /dev/raspiblitz-amd64-vg/root || true
-resize2fs /dev/raspiblitz-amd64-vg/root || true
+ROOT_LV=$(findmnt -no SOURCE /)
+VG=$(lvs --noheadings -o vg_name "$ROOT_LV" 2>/dev/null | tr -d ' ')
+PV=$(pvs --noheadings -o pv_name -S "vg_name=$VG" 2>/dev/null | head -n1 | tr -d ' ')
+DISK=$(lsblk -no pkname "$PV" 2>/dev/null | head -n1)
+PARTNUM=$(echo "$PV" | grep -oE '[0-9]+$')
+[ -n "$DISK" ] && [ -n "$PARTNUM" ] || { echo "growroot: could not detect root disk/partition"; exit 0; }
+growpart "/dev/$DISK" "$PARTNUM" || echo ", +" | sfdisk --no-reread -N "$PARTNUM" "/dev/$DISK" || true
+partprobe "/dev/$DISK" 2>/dev/null || partx -u "/dev/$DISK" 2>/dev/null || true
+pvresize "$PV" || true
+lvextend -l +100%FREE "$ROOT_LV" || true
+if [ "$(findmnt -no FSTYPE /)" = "xfs" ]; then xfs_growfs / || true; else resize2fs "$ROOT_LV" || true; fi
 GROW
     if LIBGUESTFS_BACKEND=direct virt-customize -a "$FILE_IMG" --firstboot "$GROW_SCRIPT" &>/dev/null; then
       msg_ok "Injected first-boot root auto-grow (root will fill ${DISK_SIZE} on first boot)"
